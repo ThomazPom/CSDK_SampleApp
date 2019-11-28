@@ -1,5 +1,11 @@
 # C++ SDK - Chroma Animation Sample App
 
+## The app takes a param (any name) to hide his own window
+### Use the py program to generate a hue
+### Paste the hue generated in a file named Custom_{device in Chromalink, Headset, Keyboard, Keypad, Mouse, Mousepad}.chrome
+### In case of build, copy CChromaEditorLibrary64.dll, CChromaEditor64 & Animation folder next to the executable
+### You may edit hue generated with https://github.com/RazerOfficial/CChromaEditor
+
 **Table of Contents**
 
 * [See Also](#see-also)
