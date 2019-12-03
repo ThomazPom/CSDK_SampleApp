@@ -1,4 +1,5 @@
 import colorsys
+import random
 import re,struct
 startFormat = "0100 0000 {typecode} {frame_count} 0000"
 frameformat = " {frame_duration}{colorgrid}"
@@ -74,13 +75,19 @@ frame_count = int(input("Number of frames: "))
 frame_duration = 1
 frame_duration = hex_float_specialformat( float(input("frames Duration: ")))
 
+
+random_factor = 0
+random_factor =  float(input("random factor: "))
+
 dev_props = devices.get(dev_type)
 output = startFormat.format(frame_count=hex_specialformat(frame_count), typecode=dev_props.get("typecode"))
 for i in range(1, frame_count + 1):
-    color = hsltohex_contexted(i/frame_count)
-    frame_grid = color * dev_props.get("devgridlen")
+    frame_grid = ""
+    for j in range(dev_props.get("devgridlen")):
+        color = hsltohex_contexted(i / frame_count+random.random()*random_factor)
+        frame_grid = frame_grid + color
     output += frameformat.format(frame_duration=frame_duration,colorgrid=frame_grid)
-output = replace_n(output, 40, 39)
+output = replace_n(output, 40, 39)+" "
 #print(output + " ")
 import pyperclip
 pyperclip.copy(output)
