@@ -1,4 +1,3 @@
-#include "stdafx.h"
 #include "HandleInput.h"
 
 #include "windows.h"
@@ -14,6 +13,10 @@ int HandleInput::GetKey()
 }
 bool HandleInput::WasReleased()
 {
+	if (GetConsoleWindow() != GetForegroundWindow())
+	{
+		return false;
+	}
 	if (GetAsyncKeyState(_mKey) != 0)
 	{
 		_mWasPressed = true;

@@ -1,96 +1,34 @@
-#include "stdafx.h"
+#include "ChromaLogger.h"
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+#include <iostream>
+#include <fstream>
+#include <cstdint>
+#include <filesystem>
 #include "VerifyLibrarySignature.h"
 #include <psapi.h>
 #include <wintrust.h>
 #include <Softpub.h>
 #include <shlwapi.h>
+#include <tchar.h>
 
 #pragma comment (lib, "wintrust")
 #pragma comment (lib, "Psapi")
 #pragma comment(lib, "crypt32")
 #pragma comment(lib, "ShLwApi")
 
+using namespace std;
+
 namespace ChromaSDK
 {
 
 	// Source: https://docs.microsoft.com/en-us/windows/desktop/seccrypto/example-c-program--verifying-the-signature-of-a-pe-file
-	BOOL VerifyLibrarySignature::VerifyModule(HMODULE hModule)
+	BOOL VerifyLibrarySignature::VerifyModule(const std::wstring& filename)
 	{
-		TCHAR szFilePath[MAX_PATH];
-		if (GetModuleFileNameEx(GetCurrentProcess(),
-			hModule,
-			szFilePath,
-			MAX_PATH) > 0)
-		{
-			if ((IsValidPath(szFilePath) == TRUE) &&
-				(IsFileSigned(szFilePath) == TRUE))
-			{
-				return TRUE;
-			}
-		}
-
-		return FALSE;
+		return IsFileSigned(filename.c_str());
 	}
 
-	BOOL VerifyLibrarySignature::IsValidPath(PTCHAR szFileName)
-	{
-		BOOL bResult = FALSE;
-
-		// Get the module name
-		TCHAR szModuleName[MAX_PATH] = L"";
-		_tcscpy_s(szModuleName, MAX_PATH, szFileName);
-
-		PathStripPath(szModuleName);
-
-		// Verify the path of the module
-		// Below are valid paths
-		// Windows/System32
-		// Windows/SysWOW64
-		// Program Files/Razer Chroma SDK/bin
-		// Program Files (x86)/Razer Chroma SDK/bin
-
-		DWORD dwLength = 0;
-		TCHAR szFileNameExpected[MAX_PATH] = L"";
-		TCHAR szPath[MAX_PATH] = L"";
-
-		dwLength = GetEnvironmentVariable(L"SystemRoot",
-			szPath,
-			MAX_PATH);
-
-		if (dwLength > 0)
-		{
-			_tcscpy_s(szFileNameExpected, dwLength + 1, szPath);
-
-			_tcscat_s(szFileNameExpected, MAX_PATH, L"\\System32\\");
-			_tcscat_s(szFileNameExpected, MAX_PATH, szModuleName);
-
-			if (_tcsicmp(szFileNameExpected, szFileName) == 0)
-			{
-				bResult = TRUE;
-			}
-		}
-
-		dwLength = GetEnvironmentVariable(L"ProgramFiles",
-			szPath,
-			MAX_PATH);
-
-		if (dwLength > 0)
-		{
-			_tcscpy_s(szFileNameExpected, dwLength + 1, szPath);
-
-			_tcscat_s(szFileNameExpected, MAX_PATH, L"\\Razer Chroma SDK\\bin\\");
-			_tcscat_s(szFileNameExpected, MAX_PATH, szModuleName);
-
-			if (_tcsicmp(szFileNameExpected, szFileName) == 0)
-			{
-				bResult = TRUE;
-			}
-		}
-
-		return bResult;
-	}
-
-	BOOL VerifyLibrarySignature::IsFileSignedByRazer(PTCHAR szFileName)
+	BOOL VerifyLibrarySignature::IsFileSignedByRazer(const wchar_t* szFileName)
 	{
 		BOOL bResult = FALSE;
 
@@ -190,7 +128,7 @@ namespace ChromaSDK
 		return bResult;
 	}
 
-	BOOL VerifyLibrarySignature::IsFileSigned(PTCHAR szFileName)
+	BOOL VerifyLibrarySignature::IsFileSigned(const wchar_t* szFileName)
 	{
 		BOOL bResult = FALSE;
 		DWORD dwLastError = 0;
@@ -318,6 +256,74 @@ namespace ChromaSDK
 			&WinTrustData);
 
 		return bResult;
+	}
+
+	BOOL VerifyLibrarySignature::IsFileVersionSameOrNewer(const std::wstring& filename, const int minMajor, const int minMinor, const int minRevision, const int minBuild)
+	{
+		std::filesystem::path p = filename.c_str();
+		if (!std::filesystem::exists(p))
+		{
+			ChromaLogger::fwprintf(stderr, L"Library not found! %s\r\n", filename.c_str());
+			return false;
+		}
+
+		bool result = false;
+
+		DWORD  verHandle = 0;
+		UINT   size = 0;
+		LPBYTE lpBuffer = NULL;
+		DWORD  verSize = GetFileVersionInfoSize(filename.c_str(), &verHandle);
+
+		if (verSize)
+		{
+			LPSTR verData = (LPSTR)malloc(verSize);
+
+			if (GetFileVersionInfo(filename.c_str(), verHandle, verSize, verData))
+			{
+				if (VerQueryValue(verData, L"\\", (VOID FAR * FAR*) & lpBuffer, &size))
+				{
+					if (size)
+					{
+						VS_FIXEDFILEINFO* verInfo = (VS_FIXEDFILEINFO*)lpBuffer;
+						if (verInfo->dwSignature == 0xfeef04bd)
+						{
+							const int major = (verInfo->dwFileVersionMS >> 16) & 0xffff;
+							const int minor = (verInfo->dwFileVersionMS >> 0) & 0xffff;
+							const int revision = (verInfo->dwFileVersionLS >> 16) & 0xffff;
+							const int build = (verInfo->dwFileVersionLS >> 0) & 0xffff;
+
+							ChromaLogger::wprintf(L"File Version: %d.%d.%d.%d %s\r\n", major, minor, revision, build, filename.c_str());
+
+							// Anything less than the min version returns false
+
+							if (major < minMajor) // Less than X
+							{
+								result = false;
+							}
+							else if (major == minMajor && minor < minMinor) // Less than major.X
+							{
+								result = false;
+							}
+							else if (major == minMajor && minor == minMinor && revision < minRevision) // Less than major.minor.X
+							{
+								result = false;
+							}
+							else if (major == minMajor && minor == minMinor && revision == minRevision && build < minBuild) // Less than major.minor.revision.X
+							{
+								result = false;
+							}
+							else
+							{
+								result = true; // production version or better
+							}
+						}
+					}
+				}
+			}
+			free(verData);
+		}
+
+		return result;
 	}
 
 }
